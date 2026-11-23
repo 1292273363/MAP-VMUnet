@@ -1,4 +1,4 @@
-"""MAP-VMUnet and its two single-component configurations.
+"""MAP-VMUnet and its component ablations.
 
 The encoder and decoder build on VM-UNet (Apache-2.0). See
 THIRD_PARTY_NOTICES.md for upstream sources and the implementation lineage.
@@ -57,6 +57,8 @@ class MAPVMUNet(nn.Module):
         pard_detach_ambiguity: bool = True,
         pard_ambiguity_temperature: float = 1.0,
         init_gamma: float = 1e-3,
+        pard_use_feature_refinement: bool = True,
+        pard_use_logit_refinement: bool = True,
     ):
         super().__init__()
         self.load_ckpt_path = load_ckpt_path
@@ -107,6 +109,8 @@ class MAPVMUNet(nn.Module):
                 eta_init=pard_eta_init,
                 detach_ambiguity=pard_detach_ambiguity,
                 ambiguity_temperature=pard_ambiguity_temperature,
+                use_feature_refinement=pard_use_feature_refinement,
+                use_logit_refinement=pard_use_logit_refinement,
             )
 
     def forward_features(self, x: torch.Tensor, return_global: bool = False):

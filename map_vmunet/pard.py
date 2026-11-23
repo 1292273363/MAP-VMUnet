@@ -317,7 +317,7 @@ class ProgressiveLogitRefiner(nn.Module):
 
 
 class ProgressiveAmbiguityDecoder(nn.Module):
-    """Own the feature fusions and coarse-to-fine residual prediction heads."""
+    """Coarse predictions with independently optional feature and logit refinements."""
 
     def __init__(
         self,
@@ -334,6 +334,8 @@ class ProgressiveAmbiguityDecoder(nn.Module):
         eta_init: float = 0.1,
         detach_ambiguity: bool = True,
         ambiguity_temperature: float = 1.0,
+        use_feature_refinement: bool = True,
+        use_logit_refinement: bool = True,
     ):
         super().__init__()
         self.stage_channels = tuple(int(c) for c in stage_channels)
@@ -360,6 +362,7 @@ class ProgressiveAmbiguityDecoder(nn.Module):
                     alpha_bound=alpha_bound,
                 )
                 for stage in self.stages
+                if use_feature_refinement
             }
         )
         self.stage_refiners = nn.ModuleDict(
@@ -374,17 +377,20 @@ class ProgressiveAmbiguityDecoder(nn.Module):
                     ambiguity_temperature=ambiguity_temperature,
                 )
                 for stage in range(deepest)
+                if use_logit_refinement
             }
         )
-        self.final_refiner = ProgressiveLogitRefiner(
-            channels=int(final_channels),
-            hidden_ratio=prediction_hidden_ratio,
-            delta_max=delta_max,
-            eta_init=eta_init,
-            epsilon=prediction_epsilon,
-            detach_ambiguity=detach_ambiguity,
-            ambiguity_temperature=ambiguity_temperature,
-        )
+        self.final_refiner = None
+        if use_logit_refinement:
+            self.final_refiner = ProgressiveLogitRefiner(
+                channels=int(final_channels),
+                hidden_ratio=prediction_hidden_ratio,
+                delta_max=delta_max,
+                eta_init=eta_init,
+                epsilon=prediction_epsilon,
+                detach_ambiguity=detach_ambiguity,
+                ambiguity_temperature=ambiguity_temperature,
+            )
 
     def initialize(self, feature: torch.Tensor):
         logits = self.coarse_head(feature)
@@ -421,7 +427,23 @@ class ProgressiveAmbiguityDecoder(nn.Module):
         feature: torch.Tensor,
         previous_logits: torch.Tensor,
     ):
-        return self.stage_refiners[str(int(stage))](feature, previous_logits)
+        if self.final_refiner is not None:
+            return self.stage_refiners[str(int(stage))](feature, previous_logits)
+
+        # With logit refinement off, propagate the coarse prediction so it can
+        # still supply ambiguity for the next stage and receive auxiliary loss.
+        logits = F.interpolate(
+            previous_logits,
+            size=feature.shape[1:3],
+            mode="bilinear",
+            align_corners=False,
+        )
+        ambiguity = ambiguity_from_logits(
+            logits,
+            detach=self.detach_ambiguity,
+            temperature=self.ambiguity_temperature,
+        )
+        return logits, ambiguity
 
     def refine_final(
         self,
@@ -429,6 +451,14 @@ class ProgressiveAmbiguityDecoder(nn.Module):
         previous_logits: torch.Tensor,
         base_logits: torch.Tensor,
     ):
+        if self.final_refiner is None:
+            ambiguity = ambiguity_from_logits(
+                base_logits,
+                detach=self.detach_ambiguity,
+                temperature=self.ambiguity_temperature,
+            )
+            return base_logits, ambiguity
+
         # Anchor the last correction to VM-UNet's original segmentation head.
         # With zero correction heads and zero feature scales this is exactly the
         # existing MDK-VMUNet output, which makes ablations well controlled.

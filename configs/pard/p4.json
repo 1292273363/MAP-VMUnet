@@ -1,0 +1,10 @@
+{
+  "source_preset": "P4_pard_full_no_aux",
+  "model": {
+    "pard_use_feature_refinement": true,
+    "pard_use_logit_refinement": true
+  },
+  "training": {
+    "lambda_aux": 0.0
+  }
+}

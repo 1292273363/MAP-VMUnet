@@ -1,0 +1,10 @@
+{
+  "source_preset": "P3_pard_logit_only",
+  "model": {
+    "pard_use_feature_refinement": false,
+    "pard_use_logit_refinement": true
+  },
+  "training": {
+    "lambda_aux": 0.4
+  }
+}

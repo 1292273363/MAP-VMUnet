@@ -1,0 +1,10 @@
+{
+  "source_preset": "P2_pard_feature_only",
+  "model": {
+    "pard_use_feature_refinement": true,
+    "pard_use_logit_refinement": false
+  },
+  "training": {
+    "lambda_aux": 0.4
+  }
+}

@@ -1,14 +1,8 @@
 # MAP-VMUnet
 
-MAP-VMUnet extends VM-UNet for skin lesion segmentation with a multi-scale dynamic kernel block (MDK) and a progressive ambiguity-guided residual decoder (PARD). The repository contains the complete model and the two single-module configurations in the paper's main ablation table.
+MAP-VMUnet extends VM-UNet for skin lesion segmentation with a multi-scale dynamic kernel block (MDK) and a progressive ambiguity-guided residual decoder (PARD). This repository contains the complete model, the MDK/PARD component ablations, and the PARD internal ablations used in the paper.
 
-| Configuration | MDK | PARD | Datasets used for the corresponding runs |
-| --- | --- | --- | --- |
-| `map_vmunet` | Yes | Yes | ISIC 2017 and ISIC 2018 |
-| `mdk_only` | Yes | No | ISIC 2018 |
-| `pard_only` | No | Yes | ISIC 2018 |
-
-`train.py` is the shared training and evaluation entry point. `map_vmunet/` contains the model, data loader, and training code. `configs/` contains the three settings above, and `splits/` contains the fixed sample lists.
+`train.py` runs the complete model. `train_ablation.py` runs both ablation experiments. The scripts share the model, data loader, and training and evaluation code in `map_vmunet/`. Experiment settings are in `configs/` and the fixed sample lists are in `splits/`.
 
 ## Environment
 
@@ -30,7 +24,7 @@ python -m pip install \
 The commands use the upstream Linux x86-64 wheels for Python 3.8, PyTorch 1.13 and the default PyTorch C++ ABI. If building from source, use a compatible CUDA toolkit.
 
 ```bash
-python train.py --config map_vmunet --smoke
+python train.py --smoke
 ```
 
 The smoke test uses synthetic inputs and runs a forward pass, a backward pass, one optimizer step, and an evaluation pass without dataset files.
@@ -57,25 +51,58 @@ Set `--data-root` to the directory containing the two dataset folders. Download 
 python train.py --dataset isic2018 --data-root ./data --check-data
 ```
 
-## Train and evaluate
+## Train and evaluate the complete model
 
 ```bash
-python train.py --dataset isic2018 --config map_vmunet \
+python train.py --dataset isic2018 \
   --pretrained ./weights/vmamba_small_e238_ema.pth --output ./runs/isic2018-map
-python train.py --dataset isic2018 --config mdk_only \
-  --pretrained ./weights/vmamba_small_e238_ema.pth --output ./runs/isic2018-mdk-only
-python train.py --dataset isic2018 --config pard_only \
-  --pretrained ./weights/vmamba_small_e238_ema.pth --output ./runs/isic2018-pard-only
 ```
 
 For the ISIC 2017 main run, use `--dataset isic2017` with a new output directory. Set `--gpu` if needed. Each run records its configuration and validation history and selects `best_dice.pth` using the maximum per-image mean Dice on the validation split. Evaluation on the held-out test split saves `test_summary.json` and `test_case_metrics.csv`.
 
 ```bash
-python train.py --dataset isic2018 --config map_vmunet \
+python train.py --dataset isic2018 \
   --evaluate ./runs/isic2018-map/best_dice.pth --output ./runs/isic2018-map-test
 ```
 
 Inputs are resized to 256 × 256 with bilinear interpolation for images and masks. The train loader uses paired flips and a rotation angle drawn once at initialization. The released entry point records that angle for new runs. Historical logs lack the sampled angle, so exact numerical agreement with historical runs is not guaranteed. Main Dice and IoU are per-image means. Accuracy, sensitivity, and specificity use totals across the test split.
+
+## Ablation experiments
+
+Both ablation experiments in the paper use the fixed ISIC 2018 split. In this repository, both run through `train_ablation.py`.
+
+### MDK and PARD contributions
+
+Run the two single-module configurations. Use the complete model run above for the configuration with both modules.
+
+```bash
+python train_ablation.py --dataset isic2018 --config mdk_only \
+  --pretrained ./weights/vmamba_small_e238_ema.pth --output ./runs/isic2018-mdk-only
+python train_ablation.py --dataset isic2018 --config pard_only \
+  --pretrained ./weights/vmamba_small_e238_ema.pth --output ./runs/isic2018-pard-only
+```
+
+### PARD internal components
+
+MDK is enabled throughout this experiment. Feature refinement means the ambiguity-guided residual feature correction. Logit refinement means the progressive prediction updates. Auxiliary supervision applies to the intermediate predictions.
+
+| Configuration | Feature refinement | Logit refinement | Auxiliary supervision |
+| --- | --- | --- | --- |
+| P0 | No | No | No |
+| P1 | No | No | Yes |
+| P2 | Yes | No | Yes |
+| P3 | No | Yes | Yes |
+| P4 | Yes | Yes | No |
+| P5 | Yes | Yes | Yes |
+
+P0 reuses the MDK-only configuration. P5 reuses the complete model configuration. To train any PARD configuration, replace `p3` below with `p0` through `p5` and use a new output directory.
+
+```bash
+python train_ablation.py --dataset isic2018 --config p3 \
+  --pretrained ./weights/vmamba_small_e238_ema.pth --output ./runs/isic2018-p3
+python train_ablation.py --dataset isic2018 --config p3 \
+  --evaluate ./runs/isic2018-p3/best_dice.pth --output ./runs/isic2018-p3-test
+```
 
 ## Attribution and license
 

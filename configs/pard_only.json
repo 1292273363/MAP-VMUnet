@@ -25,7 +25,9 @@
     "pard_delta_max": 2.0,
     "pard_eta_init": 0.1,
     "pard_detach_ambiguity": true,
-    "pard_ambiguity_temperature": 1.0
+    "pard_ambiguity_temperature": 1.0,
+    "pard_use_feature_refinement": true,
+    "pard_use_logit_refinement": true
   },
   "training": {
     "input_size": [256, 256],
